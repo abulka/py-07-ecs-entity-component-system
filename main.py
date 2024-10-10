@@ -1,3 +1,5 @@
+import asyncio
+import aiohttp
 from typing import Type, Dict, List, Optional
 from datetime import timedelta
 
@@ -22,7 +24,7 @@ class Entity:
         return self.components.get(component_type)
 
 class System:
-    def update(self, world: 'World', dt: timedelta) -> None:
+    async def update(self, world: 'World', dt: timedelta) -> None:
         raise NotImplementedError
 
 class World:
@@ -36,14 +38,9 @@ class World:
     def add_system(self, system: System) -> None:
         self.systems.append(system)
 
-    def update(self, dt: timedelta) -> None:
-        """Responsible for updating the state of the world and its entities. It typically iterates over all systems and calls their update methods.
-
-        In the context of an Entity-Component-System (ECS) framework, the update method is used to advance the simulation by a certain amount of time. By passing a timedelta object, you are specifying that the simulation should advance by 1 second.
-        """
+    async def update(self, dt: timedelta) -> None:
         print(f"Updating world by {dt.total_seconds()} seconds")
-        for system in self.systems:
-            system.update(self, dt)
+        await asyncio.gather(*[system.update(self, dt) for system in self.systems])
 
 # Components
 class NumberComponent(Component):
@@ -59,9 +56,13 @@ class DayComponent(Component):
         current_index = self.days_of_week.index(self.day)
         self.day = self.days_of_week[(current_index + 1) % 7]
 
+class TimePollingComponent(Component):
+    def __init__(self) -> None:
+        self.current_time: Optional[str] = None
+
 # Systems
 class IncrementNumberSystem(System):
-    def update(self, world: World, dt: timedelta) -> None:
+    async def update(self, world: World, dt: timedelta) -> None:
         for entity in world.entities:
             component = entity.get_component(NumberComponent)
             if isinstance(component, NumberComponent):
@@ -71,24 +72,43 @@ class IncrementDaySystem(System):
     def __init__(self) -> None:
         self.accumulated_time = timedelta(0)
 
-    def update(self, world: World, dt: timedelta) -> None:
-        """how could dt be used e.g. so that days only increment every 2 seconds"""
+    async def update(self, world: World, dt: timedelta) -> None:
         self.accumulated_time += dt
         if self.accumulated_time >= timedelta(seconds=2):
             for entity in world.entities:
                 component = entity.get_component(DayComponent)
                 if isinstance(component, DayComponent):
                     component.increment_day()
-            self.accumulated_time -= timedelta(seconds=2)  # Reset the accumulated time
+            self.accumulated_time -= timedelta(seconds=2)
+
+class TimePollingSystem(System):
+    """This implementation now takes advantage of Python's asynchronous
+    capabilities, allowing for non-blocking I/O operations when fetching the
+    current time from the API. The TimePollingSystem runs concurrently with
+    other systems, demonstrating the power of async programming in this ECS
+    framework."""
+    async def update(self, world: World, dt: timedelta) -> None:
+        async with aiohttp.ClientSession() as session:
+            for entity in world.entities:
+                component = entity.get_component(TimePollingComponent)
+                if isinstance(component, TimePollingComponent):
+                    try:
+                        async with session.get("http://worldtimeapi.org/api/timezone/Australia/Melbourne") as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                component.current_time = data.get('datetime')
+                    except aiohttp.ClientError as e:
+                        print(f"Error polling time: {e}")
 
 # Example Program
-if __name__ == "__main__":
+async def main():
     world = World()
 
     # Create entities
     entity1 = Entity()
     entity1.add_component(NumberComponent(0))
     entity1.add_component(DayComponent("Monday"))
+    entity1.add_component(TimePollingComponent())
 
     entity2 = Entity()
     entity2.add_component(NumberComponent(10))
@@ -101,20 +121,26 @@ if __name__ == "__main__":
     # Add systems to the world
     world.add_system(IncrementNumberSystem())
     world.add_system(IncrementDaySystem())
+    world.add_system(TimePollingSystem())
 
     # Run the systems a few times
-for _ in range(5):
-    world.update(timedelta(seconds=1))
-    
-    number_component1 = entity1.get_component(NumberComponent)
-    day_component1 = entity1.get_component(DayComponent)
-    number_component2 = entity2.get_component(NumberComponent)
-    day_component2 = entity2.get_component(DayComponent)
-    
-    if isinstance(number_component1, NumberComponent) and isinstance(day_component1, DayComponent):
-        print(f"Entity 1: Number = {number_component1.number}, Day = {day_component1.day}")
-    
-    if isinstance(number_component2, NumberComponent) and isinstance(day_component2, DayComponent):
-        print(f"Entity 2: Number = {number_component2.number}, Day = {day_component2.day}")
-    
-    print("---")
+    for _ in range(5):
+        await world.update(timedelta(seconds=1))
+        
+        number_component1 = entity1.get_component(NumberComponent)
+        day_component1 = entity1.get_component(DayComponent)
+        time_component1 = entity1.get_component(TimePollingComponent)
+        number_component2 = entity2.get_component(NumberComponent)
+        day_component2 = entity2.get_component(DayComponent)
+        
+        if isinstance(number_component1, NumberComponent) and isinstance(day_component1, DayComponent) and isinstance(time_component1, TimePollingComponent):
+            print(f"Entity 1: Number = {number_component1.number}, Day = {day_component1.day}, Time = {time_component1.current_time}")
+        
+        if isinstance(number_component2, NumberComponent) and isinstance(day_component2, DayComponent):
+            print(f"Entity 2: Number = {number_component2.number}, Day = {day_component2.day}")
+        
+        print("---")
+        # await asyncio.sleep(1)  # Add a delay to avoid hammering the API
+
+if __name__ == "__main__":
+    asyncio.run(main())
