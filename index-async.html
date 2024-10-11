@@ -1,19 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
     <title>ECS Implementation with p5.js</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
     <style>
-        body { margin: 0; padding: 0; }
-        canvas { display: block; }
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        canvas {
+            display: block;
+        }
     </style>
 </head>
+
 <body>
     <script>
         // ECS Classes
-        class Component {}
+        class Component { }
 
         class Entity {
             static _idCounter = 0;
@@ -70,33 +79,30 @@
                         if (!this.longRunningTasks.has(system) || this.longRunningTasks.get(system).done) {
                             const task = this.updateLongRunningSystem(system, dt);
                             this.longRunningTasks.set(system, { done: false, task });
+                        } else {
+                            // Check if task is still running
+                            const taskInfo = this.longRunningTasks.get(system);
+                            if (!taskInfo.task.done) {
+                                try {
+                                    await taskInfo.task;
+                                    taskInfo.done = true;
+                                    console.log(`Long-running task for system ${system.constructor.name} completed`);
+                                } catch (e) {
+                                    console.error(`Long-running task for system ${system.constructor.name} failed:`, e);
+                                    taskInfo.done = true;
+                                }
+                            }
                         }
-                    }
-                }
-
-                // Check for completed long-running tasks
-                for (const [system, taskInfo] of this.longRunningTasks.entries()) {
-                    if (taskInfo.done) continue;
-                    
-                    try {
-                        const result = await Promise.race([
-                            taskInfo.task,
-                            new Promise(resolve => setTimeout(resolve, 0)) // Allow other tasks to run
-                        ]);
-                        
-                        if (result !== undefined) {
-                            taskInfo.done = true;
-                            console.log(`Long-running task for system ${system.constructor.name} completed`);
-                        }
-                    } catch (e) {
-                        console.error(`Long-running task for system ${system.constructor.name} failed:`, e);
-                        taskInfo.done = true;
                     }
                 }
             }
 
             async updateLongRunningSystem(system, dt) {
-                return system.update(this, dt);
+                const task = system.update(this, dt);
+                let done = false;
+                await task;
+                done = true;
+                return { done, task };
             }
         }
 
@@ -165,7 +171,7 @@
                     if (pos && vel) {
                         pos.x += vel.vx * dt * 60;
                         pos.y += vel.vy * dt * 60;
-                        
+
                         pos.x = (pos.x + width) % width;
                         pos.y = (pos.y + height) % height;
                     }
@@ -184,7 +190,7 @@
                     const response = await fetch('http://worldtimeapi.org/api/timezone/Australia/Melbourne');
                     const data = await response.json();
                     const internetTime = new Date(data.datetime);
-                    
+
                     for (const entity of world.entities) {
                         const timeComp = entity.getComponent(TimeComponent);
                         if (timeComp) {
@@ -344,4 +350,5 @@
         }
     </script>
 </body>
+
 </html>
