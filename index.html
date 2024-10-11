@@ -222,6 +222,38 @@
             }
         }
 
+        class LogSystem extends System {
+            async update(world, dt) {
+                for (const entity of world.entities) {
+                    const pos = entity.getComponent(PositionComponent);
+                    const timeComp = entity.getComponent(TimeComponent);
+                    const timeFakeComp = entity.getComponent(TimeFakeComponent);
+                    const numberComp = entity.getComponent(NumberCountingComponent);
+                    const dayComp = entity.getComponent(DayCountingComponent);
+
+                    const output = [`Entity ${entity.id}:`];
+                    if (pos) {
+                        output.push(`Position = (${pos.x.toFixed(2)}, ${pos.y.toFixed(2)})`);
+                    }
+                    if (numberComp) {
+                        output.push(`Number = ${numberComp.number}`);
+                    }
+                    if (dayComp) {
+                        output.push(`Day = ${dayComp.day}`);
+                    }
+                    if (timeComp) {
+                        const formattedTime = timeComp.currentTime ? `${timeComp.currentTime.getSeconds()}s` : "None (yet)";
+                        output.push(`Time = ${formattedTime}`);
+                    }
+                    if (timeFakeComp) {
+                        const formattedTime = timeFakeComp.currentTime ? `${timeFakeComp.currentTime.getSeconds()}s` : "None (yet)";
+                        output.push(`Fake Time = ${formattedTime}`);
+                    }
+                    console.log(output.join(", "));
+                }
+            }
+        }
+
         class P5RendererSystem extends System {
             constructor(screenWidth, screenHeight, entityRadius = 5, scaleFactor = 30.0) {
                 super();
@@ -248,11 +280,34 @@
 
                 for (const entity of this.world.entities) {
                     const pos = entity.getComponent(PositionComponent);
+                    const numComp = entity.getComponent(NumberCountingComponent);
+                    const dayComp = entity.getComponent(DayCountingComponent);
+                    const timeComp = entity.getComponent(TimeComponent);
+                    const timeFakeComp = entity.getComponent(TimeFakeComponent);
+
                     if (pos) {
                         const scaledX = pos.x * this.scaleFactor;
                         const scaledY = pos.y * this.scaleFactor;
                         ellipse(scaledX, scaledY, this.entityRadius * 2, this.entityRadius * 2);
                         text(`Entity ${entity.id}`, scaledX + this.entityRadius, scaledY - this.entityRadius);
+                    }
+
+                    if (numComp) {
+                        text(`Number: ${numComp.number}`, 10, 20);
+                    }
+
+                    if (dayComp) {
+                        text(`Day: ${dayComp.day}`, 10, 40);
+                    }
+
+                    if (timeComp) {
+                        const formattedTime = timeComp.currentTime ? `${timeComp.currentTime.getSeconds()}s` : "None (yet)";
+                        text(`Internet Time: ${formattedTime}`, 10, 60);
+                    }
+
+                    if (timeFakeComp) {
+                        const formattedTime = timeFakeComp.currentTime ? `${timeFakeComp.currentTime.getSeconds()}s` : "None (yet)";
+                        text(`Fake Time: ${formattedTime}`, 10, 80);
                     }
                 }
             }
@@ -260,6 +315,7 @@
 
         let world;
         let p5RendererSystem;
+        let startTime;
 
         function setup() {
             createCanvas(800, 600);
@@ -288,12 +344,22 @@
             world.addSystem(new TimeFakePollingSystem());
             world.addSystem(new TimeInternetPollingSystem());
             world.addSystem(new CountingSystem());
+            world.addSystem(new LogSystem());
             p5RendererSystem = new P5RendererSystem(800, 600);
             world.addSystem(p5RendererSystem);
+
+            startTime = millis();
+            frameRate(10); // Slow down the frame rate
         }
 
         async function draw() {
             const dt = deltaTime / 1000;
+            const currentTime = millis();
+            if ((currentTime - startTime) / 1000 > 15) {
+                noLoop(); // Stop the draw loop after 15 seconds
+                console.log("Simulation completed.");
+                return;
+            }
             await world.update(dt);
             p5RendererSystem.draw();
         }
