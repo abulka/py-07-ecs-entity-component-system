@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECS with p5.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+</head>
+<body>
+    <script>
+        class Component {}
+
+        class Entity {
+            static idCounter = 0;
+
+            constructor() {
+                this.id = Entity.idCounter++;
+                this.components = new Map();
+            }
+
+            addComponent(component) {
+                this.components.set(component.constructor, component);
+            }
+
+            getComponent(componentType) {
+                return this.components.get(componentType);
+            }
+        }
+
+        class System {
+            constructor() {
+                this.isLongRunning = false;
+            }
+
+            async update(world, dt) {
+                throw new Error("Not implemented");
+            }
+        }
+
+        class World {
+            constructor() {
+                this.entities = [];
+                this.systems = [];
+                this.longRunningTasks = new Map();
+            }
+
+            addEntity(entity) {
+                this.entities.push(entity);
+            }
+
+            addSystem(system) {
+                this.systems.push(system);
+            }
+
+            async update(dt) {
+                const fastUpdates = this.systems
+                    .filter(system => !system.isLongRunning)
+                    .map(system => system.update(this, dt));
+                await Promise.all(fastUpdates);
+
+                for (const system of this.systems) {
+                    if (system.isLongRunning) {
+                        if (!this.longRunningTasks.has(system) || this.longRunningTasks.get(system).done) {
+                            this.longRunningTasks.set(system, system.update(this, dt));
+                        }
+                    }
+                }
+
+                for (const [system, task] of this.longRunningTasks.entries()) {
+                    if (task.done) {
+                        this.longRunningTasks.delete(system);
+                        try {
+                            await task;
+                        } catch (e) {
+                            console.error(`Long-running task for system ${system.constructor.name} failed: ${e}`);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Example components
+        class PositionComponent extends Component {
+            constructor(x, y) {
+                super();
+                this.x = x;
+                this.y = y;
+            }
+        }
+
+        class VelocityComponent extends Component {
+            constructor(vx, vy) {
+                super();
+                this.vx = vx;
+                this.vy = vy;
+            }
+        }
+
+        class TimeComponent extends Component {
+            constructor() {
+                super();
+                this.currentTime = null;
+            }
+        }
+
+        class TimeFakeComponent extends Component {
+            constructor() {
+                super();
+                this.currentTime = null;
+                this.lastUpdate = null;
+            }
+        }
+
+        class NumberCountingComponent extends Component {
+            constructor(number) {
+                super();
+                this.number = number;
+            }
+        }
+
+        class DayCountingComponent extends Component {
+            constructor(day) {
+                super();
+                this.day = day;
+                this.daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                this.counter = 0;
+            }
+
+            incrementDay() {
+                this.counter += 1;
+                if (this.counter % 2 === 0) {
+                    const currentIndex = this.daysOfWeek.indexOf(this.day);
+                    this.day = this.daysOfWeek[(currentIndex + 1) % 7];
+                }
+            }
+        }
+
+        // Example systems
+        class MovementSystem extends System {
+            async update(world, dt) {
+                for (const entity of world.entities) {
+                    const pos = entity.getComponent(PositionComponent);
+                    const vel = entity.getComponent(VelocityComponent);
+                    if (pos && vel) {
+                        pos.x += vel.vx * dt;
+                        pos.y += vel.vy * dt;
+                    }
+                }
+            }
+        }
+
+        class TimeFakePollingSystem extends System {
+            constructor() {
+                super();
+                this.isLongRunning = true;
+                this.TIME_BETWEEN_UPDATES = 2; // seconds
+                this.TIME_SLEEP = 1; // seconds
+            }
+
+            async update(world, dt) {
+                const currentTime = new Date();
+                for (const entity of world.entities) {
+                    const timeComp = entity.getComponent(TimeFakeComponent);
+                    if (timeComp) {
+                        if (!timeComp.lastUpdate || (currentTime - timeComp.lastUpdate) / 1000 >= this.TIME_BETWEEN_UPDATES) {
+                            await this.fetchTime(timeComp);
+                        }
+                    }
+                }
+            }
+
+            async fetchTime(timeComponent) {
+                await new Promise(resolve => setTimeout(resolve, this.TIME_SLEEP * 1000));
+                timeComponent.currentTime = new Date();
+                timeComponent.lastUpdate = new Date();
+            }
+        }
+
+        class TimeInternetPollingSystem extends System {
+            constructor() {
+                super();
+                this.isLongRunning = true;
+            }
+
+            async update(world, dt) {
+                for (const entity of world.entities) {
+                    const component = entity.getComponent(TimeComponent);
+                    if (component) {
+                        await this.fetchTime(component);
+                    }
+                }
+            }
+
+            async fetchTime(timeComponent) {
+                const sleepTime = Math.random() * (1.5 - 0.5) + 0.5;
+                await new Promise(resolve => setTimeout(resolve, sleepTime * 1000));
+                try {
+                    const response = await fetch("http://worldtimeapi.org/api/timezone/Australia/Melbourne");
+                    if (response.ok) {
+                        const data = await response.json();
+                        timeComponent.currentTime = new Date(data.datetime);
+                    }
+                } catch (e) {
+                    console.error(`Error polling time: ${e}`);
+                }
+            }
+        }
+
+        class CountingSystem extends System {
+            async update(world, dt) {
+                for (const entity of world.entities) {
+                    const numComp = entity.getComponent(NumberCountingComponent);
+                    if (numComp) {
+                        numComp.number += 1;
+                    }
+
+                    const dayComp = entity.getComponent(DayCountingComponent);
+                    if (dayComp) {
+                        dayComp.incrementDay();
+                    }
+                }
+            }
+        }
+
+        class P5RendererSystem extends System {
+            constructor(screenWidth, screenHeight, entityRadius = 5, scaleFactor = 30.0) {
+                super();
+                this.screenWidth = screenWidth;
+                this.screenHeight = screenHeight;
+                this.entityRadius = entityRadius;
+                this.scaleFactor = scaleFactor;
+                this.world = null;
+            }
+
+            setWorld(world) {
+                this.world = world;
+            }
+
+            async update(world, dt) {
+                this.world = world;
+            }
+
+            draw() {
+                if (!this.world) return;
+
+                background(0);
+                fill(255);
+
+                for (const entity of this.world.entities) {
+                    const pos = entity.getComponent(PositionComponent);
+                    if (pos) {
+                        const scaledX = pos.x * this.scaleFactor;
+                        const scaledY = pos.y * this.scaleFactor;
+                        ellipse(scaledX, scaledY, this.entityRadius * 2, this.entityRadius * 2);
+                        text(`Entity ${entity.id}`, scaledX + this.entityRadius, scaledY - this.entityRadius);
+                    }
+                }
+            }
+        }
+
+        let world;
+        let p5RendererSystem;
+
+        function setup() {
+            createCanvas(800, 600);
+            world = new World();
+
+            // Create entities
+            const entity1 = new Entity();
+            entity1.addComponent(new PositionComponent(0, 0));
+            entity1.addComponent(new VelocityComponent(1, 1));
+            world.addEntity(entity1);
+
+            const entity2 = new Entity();
+            entity2.addComponent(new PositionComponent(20, 10));
+            entity2.addComponent(new VelocityComponent(-1, -1));
+            world.addEntity(entity2);
+
+            const entity3 = new Entity();
+            entity3.addComponent(new NumberCountingComponent(0));
+            entity3.addComponent(new DayCountingComponent("Monday"));
+            entity3.addComponent(new TimeComponent());
+            entity3.addComponent(new TimeFakeComponent());
+            world.addEntity(entity3);
+
+            // Add systems
+            world.addSystem(new MovementSystem());
+            world.addSystem(new TimeFakePollingSystem());
+            world.addSystem(new TimeInternetPollingSystem());
+            world.addSystem(new CountingSystem());
+            p5RendererSystem = new P5RendererSystem(800, 600);
+            world.addSystem(p5RendererSystem);
+        }
+
+        async function draw() {
+            const dt = deltaTime / 1000;
+            await world.update(dt);
+            p5RendererSystem.draw();
+        }
+    </script>
+</body>
+</html>
