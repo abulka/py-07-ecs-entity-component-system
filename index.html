@@ -173,6 +173,7 @@
                 await new Promise(resolve => setTimeout(resolve, this.TIME_SLEEP * 1000));
                 timeComponent.currentTime = new Date();
                 timeComponent.lastUpdate = new Date();
+                console.log(`Fake time updated: ${timeComponent.currentTime}`);
             }
         }
 
@@ -199,6 +200,7 @@
                     if (response.ok) {
                         const data = await response.json();
                         timeComponent.currentTime = new Date(data.datetime);
+                        console.log(`Internet time updated: ${timeComponent.currentTime}`);
                     }
                 } catch (e) {
                     console.error(`Error polling time: ${e}`);
