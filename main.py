@@ -119,7 +119,7 @@ class TimeFakePollingSystem(System):
     async def update(self, world: World, dt: timedelta) -> None:
         current_time = datetime.now()
         for entity in world.entities:
-            time_comp = entity.get_component(TimeComponent)
+            time_comp = entity.get_component(TimeFakeComponent)
             if isinstance(time_comp, TimeFakeComponent):
                 if time_comp.last_update is None or (current_time - time_comp.last_update).total_seconds() >= self.TIME_BETWEEN_UPDATES:
                     await self.fetch_time(time_comp)
@@ -152,7 +152,7 @@ class TimeInternetPollingSystem(System):
 
     async def fetch_time(self, time_component: TimeComponent) -> None:
         # Sleep for a random number of milliseconds between 0.3 and 1.5 milliseconds
-        sleep_time = random.uniform(1.5, 2.5)
+        sleep_time = random.uniform(0.5, 1.5)
         await asyncio.sleep(sleep_time)
         try:
             async with aiohttp.ClientSession() as session:
@@ -205,13 +205,15 @@ async def game_loop(world: World, duration: float):
                 output.append(f"Day = {day_comp.day}")
             if isinstance(time_comp, TimeComponent):
                 if time_comp.current_time is not None:
-                    formatted_time = time_comp.current_time.strftime("%Hh %Mm %Ss %fms")
+                    # formatted_time = time_comp.current_time.strftime("%Hh %Mm %Ss %fms")
+                    formatted_time = time_comp.current_time.strftime("%Ss")
                 else:
                     formatted_time = "None (yet)"
                 output.append(f"Time = {formatted_time}")
             if isinstance(time_fake_comp, TimeFakeComponent):
                 if time_fake_comp.current_time is not None:
-                    formatted_time = time_fake_comp.current_time.strftime("%Hh %Mm %Ss %fms")
+                    # formatted_time = time_fake_comp.current_time.strftime("%Hh %Mm %Ss %fms")
+                    formatted_time = time_fake_comp.current_time.strftime("%Ss")
                 else:
                     formatted_time = "None (yet)"
                 output.append(f"Fake Time = {formatted_time}")

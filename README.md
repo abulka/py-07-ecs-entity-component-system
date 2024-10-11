@@ -47,3 +47,51 @@ To use this architecture:
 3. Implement the `update` method for all systems, using `await` for any asynchronous operations.
 
 This solution provides a general framework for handling both types of systems efficiently within the ECS architecture, maintaining good performance for game-like systems while accommodating occasional long-running tasks.
+
+# Example Output
+
+```
+Starting game loop...
+Entity 0:, Position = (0.00, 0.00)
+Entity 1:, Position = (10.00, 10.00)
+Entity 2:, Number = 1, Day = Monday, Time = None (yet), Fake Time = None (yet)
+---
+Entity 0:, Position = (0.50, 0.50)
+Entity 1:, Position = (9.50, 9.50)
+Entity 2:, Number = 2, Day = Tuesday, Time = None (yet), Fake Time = None (yet)
+---
+Entity 0:, Position = (1.00, 1.00)
+Entity 1:, Position = (9.00, 9.00)
+Entity 2:, Number = 3, Day = Tuesday, Time = None (yet), Fake Time = 32s
+---
+Entity 0:, Position = (1.50, 1.50)
+Entity 1:, Position = (8.50, 8.50)
+Entity 2:, Number = 4, Day = Wednesday, Time = 32s, Fake Time = 32s
+---
+Entity 0:, Position = (2.01, 2.01)
+Entity 1:, Position = (7.99, 7.99)
+Entity 2:, Number = 5, Day = Wednesday, Time = 32s, Fake Time = 32s
+---
+Entity 0:, Position = (2.51, 2.51)
+Entity 1:, Position = (7.49, 7.49)
+Entity 2:, Number = 6, Day = Thursday, Time = 33s, Fake Time = 32s
+---
+Entity 0:, Position = (3.01, 3.01)
+Entity 1:, Position = (6.99, 6.99)
+Entity 2:, Number = 7, Day = Thursday, Time = 33s, Fake Time = 32s
+---
+Entity 0:, Position = (3.51, 3.51)
+Entity 1:, Position = (6.49, 6.49)
+Entity 2:, Number = 8, Day = Friday, Time = 33s, Fake Time = 32s
+---
+Entity 0:, Position = (4.01, 4.01)
+Entity 1:, Position = (5.99, 5.99)
+Entity 2:, Number = 9, Day = Friday, Time = 33s, Fake Time = 35s
+---
+Entity 0:, Position = (4.51, 4.51)
+Entity 1:, Position = (5.49, 5.49)
+Entity 2:, Number = 10, Day = Saturday, Time = 35s, Fake Time = 35s
+---
+Simulation completed. Average FPS: 2.00
+```
+
