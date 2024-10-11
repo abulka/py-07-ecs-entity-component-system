@@ -187,6 +187,9 @@
 
             async update(world, dt) {
                 try {
+                    // sleep for random time between 0 and 2 seconds to avoid spamming the API
+                    await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
+
                     const response = await fetch('http://worldtimeapi.org/api/timezone/Australia/Melbourne');
                     const data = await response.json();
                     const internetTime = new Date(data.datetime);
@@ -262,8 +265,10 @@
                     if (pos) output.push(`Position = (${pos.x.toFixed(2)}, ${pos.y.toFixed(2)})`);
                     if (numberComp) output.push(`Number = ${numberComp.number}`);
                     if (dayComp) output.push(`Day = ${dayComp.day}`);
-                    if (timeComp && timeComp.currentTime) output.push(`Time = ${Math.floor(timeComp.currentTime.getTime() / 1000)}`);
-                    if (timeFakeComp && timeFakeComp.currentTime) output.push(`Fake Time = ${Math.floor(timeFakeComp.currentTime.getTime() / 1000)}`);
+                    if (timeComp && timeComp.currentTime)
+                        output.push(`Time = ${Math.floor((timeComp.currentTime.getTime() - startTime) / 1000)}`);
+                    if (timeFakeComp && timeFakeComp.currentTime)
+                        output.push(`Fake Time = ${Math.floor((timeFakeComp.currentTime.getTime() - startTime) / 1000)}`);
 
                     console.log(output.join(", "));
                 }
@@ -308,6 +313,7 @@
             world.addSystem(new LogSystem());
 
             startTime = millis();
+            lastUpdate = startTime;
             updateInterval = setInterval(async () => {
                 const now = millis();
                 if (now - startTime > simulationDuration) {
@@ -349,10 +355,10 @@
             text(`Number: ${numComp.number}`, 10, 10);
             text(`Day: ${dayComp.day}`, 10, 30);
             if (timeComp.currentTime) {
-                text(`Time: ${Math.floor(timeComp.currentTime.getTime() / 1000)}`, 10, 50);
+                text(`Time: ${Math.floor((millis() - startTime) / 1000)}`, 10, 50);
             }
             if (timeFakeComp.currentTime) {
-                text(`Fake Time: ${Math.floor(timeFakeComp.currentTime.getTime() / 1000)}`, 10, 70);
+                text(`Fake Time: ${Math.floor((millis() - startTime) / 1000)}`, 10, 70);
             }
         }
     </script>
