@@ -157,7 +157,7 @@
 
             incrementDay() {
                 this.counter++;
-                if (this.counter % 2 === 0) {
+                if (this.counter % 5 === 0) {
                     const currentIndex = this.daysOfWeek.indexOf(this.day);
                     this.day = this.daysOfWeek[(currentIndex + 1) % 7];
                 }
