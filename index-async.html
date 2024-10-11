@@ -275,6 +275,7 @@
         let startTime;
         const simulationDuration = 10000; // 10 seconds
         let lastUpdate = 0;
+        let updateInterval;
 
         function setup() {
             createCanvas(800, 600);
@@ -307,10 +308,11 @@
             world.addSystem(new LogSystem());
 
             startTime = millis();
-            setInterval(async () => {
+            updateInterval = setInterval(async () => {
                 const now = millis();
                 if (now - startTime > simulationDuration) {
                     console.log("Simulation ended after 10 seconds");
+                    clearInterval(updateInterval); // Clear the interval
                     noLoop();
                     return;
                 }
