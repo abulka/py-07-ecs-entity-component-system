@@ -1,11 +1,13 @@
 import asyncio
 import random
-from typing import Type, Dict, List, Optional, Coroutine
-from datetime import datetime, timedelta
 import time
+from datetime import datetime, timedelta
+from typing import Coroutine, Dict, List, Optional, Type
 
 import aiohttp
+import pygame
 from blessed import Terminal
+
 
 class Component:
     pass
@@ -210,7 +212,7 @@ class RendererSystem(System):
                     print(self.term.move_xy(0, 23) + f"Fake Time: {formatted_time}")
 
 class LogSystem(System):
-    def __init__(self, log_file: str = "main.log"):
+    def __init__(self, log_file: str = "log.log"):
         self.log_file = log_file
 
     async def update(self, world: World, dt: timedelta) -> None:
@@ -244,6 +246,31 @@ class LogSystem(System):
                 log.write(", ".join(output) + "\n")
             log.write("---\n")
 
+class PygameRendererSystem(System):
+    def __init__(self, screen_width: int, screen_height: int, entity_radius: int = 5, scale_factor: float = 30.0):
+        pygame.init()
+        self.screen = pygame.display.set_mode((screen_width, screen_height))
+        pygame.display.set_caption("ECS Renderer")
+        self.entity_radius = entity_radius
+        self.scale_factor = scale_factor
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont(None, 24)
+
+    async def update(self, world: World, dt: timedelta) -> None:
+        self.screen.fill((0, 0, 0))  # Clear screen with black
+
+        for entity in world.entities:
+            pos = entity.get_component(PositionComponent)
+            if isinstance(pos, PositionComponent):
+                scaled_x = int(pos.x * self.scale_factor)
+                scaled_y = int(pos.y * self.scale_factor)
+                pygame.draw.circle(self.screen, (255, 255, 255), (scaled_x, scaled_y), self.entity_radius)
+                entity_label = self.font.render(f"Entity {entity.id}", True, (255, 255, 255))
+                self.screen.blit(entity_label, (scaled_x + self.entity_radius, scaled_y - self.entity_radius))
+
+        pygame.display.flip()
+        self.clock.tick(60)  # Cap the frame rate at 60 FPS
+
 async def game_loop(world: World, duration: float, term: Terminal):
     start_time = time.time()
     last_time = start_time
@@ -270,7 +297,7 @@ async def main():
     world.add_entity(entity1)
 
     entity2 = Entity()
-    entity2.add_component(PositionComponent(10, 10))
+    entity2.add_component(PositionComponent(20, 10))
     entity2.add_component(VelocityComponent(-1, -1))
     world.add_entity(entity2)
 
@@ -288,6 +315,7 @@ async def main():
     world.add_system(CountingSystem())
     world.add_system(RendererSystem(term))
     world.add_system(LogSystem())
+    world.add_system(PygameRendererSystem(screen_width=800, screen_height=600))
 
     print("Starting game loop...")
     with term.fullscreen(), term.cbreak(), term.hidden_cursor():
