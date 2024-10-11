@@ -191,7 +191,7 @@
             async update(world, dt) {
                 try {
                     // sleep for random time between 1 and 3 seconds to avoid spamming the API
-                    await new Promise(resolve => setTimeout(resolve, 1 + Math.random() * 2000));
+                    await new Promise(resolve => setTimeout(resolve, 2 + Math.random() * 2000));
 
                     const response = await fetch('http://worldtimeapi.org/api/timezone/Australia/Melbourne');
 
