@@ -1,7 +1,10 @@
 import asyncio
+import random
 from typing import Type, Dict, List, Optional, Coroutine
-from datetime import timedelta
+from datetime import datetime, timedelta
 import time
+
+import aiohttp
 
 class Component:
     pass
@@ -71,7 +74,7 @@ class VelocityComponent(Component):
 
 class TimeComponent(Component):
     def __init__(self):
-        self.current_time: Optional[str] = None
+        self.current_time: Optional[datetime] = None
         self.last_update: float = 0
 
 class NumberCountingComponent(Component):
@@ -100,23 +103,60 @@ class MovementSystem(System):
                 pos.x += vel.vx * dt.total_seconds()
                 pos.y += vel.vy * dt.total_seconds()
 
-class TimePollingSystem(System):
+# class TimePollingSystem(System):
+#     """Doesn't do a real internet call, just simulates a long-running task. Also does a sleep. Also only runs every 5 seconds."""
+#     is_long_running = True
+
+#     async def update(self, world: World, dt: timedelta) -> None:
+#         current_time = time.time()
+#         for entity in world.entities:
+#             time_comp = entity.get_component(TimeComponent)
+            
+#             if isinstance(time_comp, TimeComponent) and current_time - time_comp.last_update >= 5:
+#                 await self.fetch_time(time_comp)
+
+#     async def fetch_time(self, time_component: TimeComponent) -> None:
+#         # Simulate a long-running API call
+#         await asyncio.sleep(2)
+#         time_component.current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+#         time_component.last_update = time.time() # could convert the epoch time (float) to a datetime object date_time = datetime.fromtimestamp(epoch_time)
+
+class TimeInternetPollingSystem(System):
+    """This implementation now takes advantage of Python's asynchronous
+    capabilities, allowing for non-blocking I/O operations when fetching the
+    current time from the API. The TimePollingSystem runs concurrently with
+    other systems, demonstrating the power of async programming in this ECS
+    framework.
+    
+    Setting is_long_running to True indicates that this system will run probably
+    longer than a single frame, and will be managed by the World class via the 
+    long_running_tasks dictionary and won't block the main game loop.
+    """
     is_long_running = True
 
     async def update(self, world: World, dt: timedelta) -> None:
-        current_time = time.time()
-        for entity in world.entities:
-            time_comp = entity.get_component(TimeComponent)
-            
-            if isinstance(time_comp, TimeComponent) and current_time - time_comp.last_update >= 5:
-                await self.fetch_time(time_comp)
+        async with aiohttp.ClientSession() as session:
+            for entity in world.entities:
+                component = entity.get_component(TimeComponent)
+                if isinstance(component, TimeComponent):
+                    await self.fetch_time(component)
 
     async def fetch_time(self, time_component: TimeComponent) -> None:
-        # Simulate a long-running API call
-        await asyncio.sleep(2)
-        time_component.current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-        time_component.last_update = time.time() # could convert the epoch time (float) to a datetime object date_time = datetime.fromtimestamp(epoch_time)
+        # Sleep for a random number of milliseconds between 0.3 and 1.5 milliseconds
+        sleep_time = random.uniform(1.5, 2.5)
+        await asyncio.sleep(sleep_time)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://worldtimeapi.org/api/timezone/Australia/Melbourne") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        # Parse the datetime string into a datetime object
+                        datetime_str = data.get('datetime')
+                        time_component.current_time = datetime.fromisoformat(datetime_str)
 
+        except aiohttp.ClientError as e:
+            print(f"Error polling time: {e}")
+        
 class CountingSystem(System):
     async def update(self, world: World, dt: timedelta) -> None:
         for entity in world.entities:
@@ -154,8 +194,11 @@ async def game_loop(world: World, duration: float):
             if isinstance(day_comp, DayCountingComponent):
                 output.append(f"Day = {day_comp.day}")
             if isinstance(time_comp, TimeComponent):
-                output.append(f"Time = {time_comp.current_time}")
-
+                if time_comp.current_time is not None:
+                    formatted_time = time_comp.current_time.strftime("%Hh %Mm %Ss %fms")
+                else:
+                    formatted_time = "None (yet)"
+                output.append(f"Time = {formatted_time}")
             print(", ".join(output))
         print("---")
 
@@ -185,7 +228,8 @@ async def main():
 
     # Add systems
     world.add_system(MovementSystem())
-    world.add_system(TimePollingSystem())
+    # world.add_system(TimePollingSystem())
+    world.add_system(TimeInternetPollingSystem())
     world.add_system(CountingSystem())
 
     print("Starting game loop...")
