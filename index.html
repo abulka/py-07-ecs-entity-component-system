@@ -66,16 +66,19 @@
                     }
                 }
 
+                const completedTasks = [];
                 for (const [system, task] of this.longRunningTasks.entries()) {
                     if (task.done) {
-                        this.longRunningTasks.delete(system);
+                        completedTasks.push(system);
                         try {
                             await task;
+                            console.log(`NEVER GETS HERE? Long-running task for system ${system.constructor.name} completed.`);
                         } catch (e) {
                             console.error(`Long-running task for system ${system.constructor.name} failed: ${e}`);
                         }
                     }
                 }
+                completedTasks.forEach(system => this.longRunningTasks.delete(system));
             }
         }
 
@@ -153,18 +156,15 @@
             constructor() {
                 super();
                 this.isLongRunning = true;
-                this.TIME_BETWEEN_UPDATES = 2; // seconds
-                this.TIME_SLEEP = 1; // seconds
+                this.TIME_BETWEEN_UPDATES = 0.5; // seconds
+                this.TIME_SLEEP = 0.1; // seconds
             }
 
             async update(world, dt) {
-                const currentTime = new Date();
                 for (const entity of world.entities) {
                     const timeComp = entity.getComponent(TimeFakeComponent);
                     if (timeComp) {
-                        if (!timeComp.lastUpdate || (currentTime - timeComp.lastUpdate) / 1000 >= this.TIME_BETWEEN_UPDATES) {
-                            await this.fetchTime(timeComp);
-                        }
+                        await this.fetchTime(timeComp);
                     }
                 }
             }
@@ -172,7 +172,6 @@
             async fetchTime(timeComponent) {
                 await new Promise(resolve => setTimeout(resolve, this.TIME_SLEEP * 1000));
                 timeComponent.currentTime = new Date();
-                timeComponent.lastUpdate = new Date();
                 console.log(`Fake time updated: ${timeComponent.currentTime}`);
             }
         }
@@ -181,6 +180,7 @@
             constructor() {
                 super();
                 this.isLongRunning = true;
+                this.TIME_BETWEEN_UPDATES = 1; // seconds
             }
 
             async update(world, dt) {
@@ -193,8 +193,8 @@
             }
 
             async fetchTime(timeComponent) {
-                const sleepTime = Math.random() * (1.5 - 0.5) + 0.5;
-                await new Promise(resolve => setTimeout(resolve, sleepTime * 1000));
+                // const sleepTime = Math.random() * (0.5 - 0.1) + 0.1;
+                // await new Promise(resolve => setTimeout(resolve, sleepTime * 1000));
                 try {
                     const response = await fetch("http://worldtimeapi.org/api/timezone/Australia/Melbourne");
                     if (response.ok) {
@@ -244,11 +244,11 @@
                         output.push(`Day = ${dayComp.day}`);
                     }
                     if (timeComp) {
-                        const formattedTime = timeComp.currentTime ? `${timeComp.currentTime.getSeconds()}s` : "None (yet)";
+                        const formattedTime = timeComp.currentTime ? `${timeComp.currentTime.toISOString()}` : "None (yet)";
                         output.push(`Time = ${formattedTime}`);
                     }
                     if (timeFakeComp) {
-                        const formattedTime = timeFakeComp.currentTime ? `${timeFakeComp.currentTime.getSeconds()}s` : "None (yet)";
+                        const formattedTime = timeFakeComp.currentTime ? `${timeFakeComp.currentTime.toISOString()}` : "None (yet)";
                         output.push(`Fake Time = ${formattedTime}`);
                     }
                     console.log(output.join(", "));
@@ -285,7 +285,7 @@
                     const numComp = entity.getComponent(NumberCountingComponent);
                     const dayComp = entity.getComponent(DayCountingComponent);
                     const timeComp = entity.getComponent(TimeComponent);
-                    const timeFakeComp = entity.getComponent(TimeFakeComponent);
+                    // const timeFakeComp = entity.getComponent(TimeFakeComponent);
 
                     if (pos) {
                         const scaledX = pos.x * this.scaleFactor;
@@ -307,10 +307,10 @@
                         text(`Internet Time: ${formattedTime}`, 10, 60);
                     }
 
-                    if (timeFakeComp) {
-                        const formattedTime = timeFakeComp.currentTime ? `${timeFakeComp.currentTime.getSeconds()}s` : "None (yet)";
-                        text(`Fake Time: ${formattedTime}`, 10, 80);
-                    }
+                    // if (timeFakeComp) {
+                    //     const formattedTime = timeFakeComp.currentTime ? `${timeFakeComp.currentTime.getSeconds()}s` : "None (yet)";
+                    //     text(`Fake Time: ${formattedTime}`, 10, 80);
+                    // }
                 }
             }
         }
