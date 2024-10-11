@@ -37,7 +37,7 @@
                 this.isLongRunning = false;
             }
 
-            update(world, dt) {
+            async update(world, dt) {
                 // To be implemented by subclasses
             }
         }
@@ -46,6 +46,7 @@
             constructor() {
                 this.entities = [];
                 this.systems = [];
+                this.longRunningTasks = new Map();
             }
 
             addEntity(entity) {
@@ -56,10 +57,46 @@
                 this.systems.push(system);
             }
 
-            update(dt) {
+            async update(dt) {
+                // Update fast systems
+                const fastUpdates = this.systems
+                    .filter(system => !system.isLongRunning)
+                    .map(system => system.update(this, dt));
+                await Promise.all(fastUpdates);
+
+                // Handle long-running systems
                 for (const system of this.systems) {
-                    system.update(this, dt);
+                    if (system.isLongRunning) {
+                        if (!this.longRunningTasks.has(system) || this.longRunningTasks.get(system).done) {
+                            const task = this.updateLongRunningSystem(system, dt);
+                            this.longRunningTasks.set(system, { done: false, task });
+                        }
+                    }
                 }
+
+                // Check for completed long-running tasks
+                for (const [system, taskInfo] of this.longRunningTasks.entries()) {
+                    if (taskInfo.done) continue;
+                    
+                    try {
+                        const result = await Promise.race([
+                            taskInfo.task,
+                            new Promise(resolve => setTimeout(resolve, 0)) // Allow other tasks to run
+                        ]);
+                        
+                        if (result !== undefined) {
+                            taskInfo.done = true;
+                            console.log(`Long-running task for system ${system.constructor.name} completed`);
+                        }
+                    } catch (e) {
+                        console.error(`Long-running task for system ${system.constructor.name} failed:`, e);
+                        taskInfo.done = true;
+                    }
+                }
+            }
+
+            async updateLongRunningSystem(system, dt) {
+                return system.update(this, dt);
             }
         }
 
@@ -121,15 +158,14 @@
 
         // Systems
         class MovementSystem extends System {
-            update(world, dt) {
+            async update(world, dt) {
                 for (const entity of world.entities) {
                     const pos = entity.getComponent(PositionComponent);
                     const vel = entity.getComponent(VelocityComponent);
                     if (pos && vel) {
-                        pos.x += vel.vx * dt * 60; // Scale by 60 to make movement more visible
+                        pos.x += vel.vx * dt * 60;
                         pos.y += vel.vy * dt * 60;
                         
-                        // Wrap around screen edges
                         pos.x = (pos.x + width) % width;
                         pos.y = (pos.y + height) % height;
                     }
@@ -143,7 +179,8 @@
                 this.isLongRunning = true;
             }
 
-            update(world, dt) {
+            async update(world, dt) {
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
                 for (const entity of world.entities) {
                     const timeComp = entity.getComponent(TimeComponent);
                     if (timeComp) {
@@ -157,32 +194,31 @@
             constructor() {
                 super();
                 this.isLongRunning = true;
-                this.timeBetweenUpdates = 2000; // 2 seconds
-                this.timeSleep = 1000; // 1 second
+                this.timeBetweenUpdates = 2000;
+                this.timeSleep = 1000;
             }
 
-            update(world, dt) {
+            async update(world, dt) {
                 const currentTime = Date.now();
                 for (const entity of world.entities) {
                     const timeFakeComp = entity.getComponent(TimeFakeComponent);
                     if (timeFakeComp) {
                         if (!timeFakeComp.lastUpdate || (currentTime - timeFakeComp.lastUpdate) >= this.timeBetweenUpdates) {
-                            this.fetchTime(timeFakeComp);
+                            await this.fetchTime(timeFakeComp);
                         }
                     }
                 }
             }
 
-            fetchTime(timeFakeComp) {
-                setTimeout(() => {
-                    timeFakeComp.currentTime = new Date();
-                    timeFakeComp.lastUpdate = Date.now();
-                }, this.timeSleep);
+            async fetchTime(timeFakeComp) {
+                await new Promise(resolve => setTimeout(resolve, this.timeSleep));
+                timeFakeComp.currentTime = new Date();
+                timeFakeComp.lastUpdate = Date.now();
             }
         }
 
         class CountingSystem extends System {
-            update(world, dt) {
+            async update(world, dt) {
                 for (const entity of world.entities) {
                     const numComp = entity.getComponent(NumberCountingComponent);
                     if (numComp) {
@@ -198,7 +234,7 @@
         }
 
         class LogSystem extends System {
-            update(world, dt) {
+            async update(world, dt) {
                 console.log("--- Log Update ---");
                 for (const entity of world.entities) {
                     const pos = entity.getComponent(PositionComponent);
@@ -226,7 +262,7 @@
 
         function setup() {
             createCanvas(800, 600);
-            frameRate(10); // Slow down the frame rate
+            frameRate(10);
             world = new World();
 
             // Create entities
@@ -257,16 +293,16 @@
             startTime = millis();
         }
 
-        function draw() {
+        async function draw() {
             if (millis() - startTime > simulationDuration) {
                 console.log("Simulation ended after 10 seconds");
-                noLoop(); // Stop the draw loop
+                noLoop();
                 return;
             }
 
             background(0);
-            const dt = deltaTime / 1000; // Convert to seconds
-            world.update(dt);
+            const dt = deltaTime / 1000;
+            await world.update(dt);
 
             // Render entities
             for (const entity of world.entities) {
@@ -280,7 +316,7 @@
             }
 
             // Display counting and time information
-            const infoEntity = world.entities[2]; // Assuming entity3 is at index 2
+            const infoEntity = world.entities[2];
             const numComp = infoEntity.getComponent(NumberCountingComponent);
             const dayComp = infoEntity.getComponent(DayCountingComponent);
             const timeComp = infoEntity.getComponent(TimeComponent);
