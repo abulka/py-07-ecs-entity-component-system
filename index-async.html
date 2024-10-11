@@ -180,12 +180,20 @@
             }
 
             async update(world, dt) {
-                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-                for (const entity of world.entities) {
-                    const timeComp = entity.getComponent(TimeComponent);
-                    if (timeComp) {
-                        timeComp.currentTime = new Date();
+                try {
+                    const response = await fetch('http://worldtimeapi.org/api/timezone/Australia/Melbourne');
+                    const data = await response.json();
+                    const internetTime = new Date(data.datetime);
+                    
+                    for (const entity of world.entities) {
+                        const timeComp = entity.getComponent(TimeComponent);
+                        if (timeComp) {
+                            timeComp.currentTime = internetTime;
+                        }
                     }
+                    console.log(`Internet time updated: ${internetTime.toLocaleString()}`);
+                } catch (error) {
+                    console.error('Error fetching internet time:', error);
                 }
             }
         }
@@ -214,6 +222,7 @@
                 await new Promise(resolve => setTimeout(resolve, this.timeSleep));
                 timeFakeComp.currentTime = new Date();
                 timeFakeComp.lastUpdate = Date.now();
+                console.log(`Fake time updated: ${timeFakeComp.currentTime.toLocaleString()}`);
             }
         }
 
@@ -247,8 +256,8 @@
                     if (pos) output.push(`Position = (${pos.x.toFixed(2)}, ${pos.y.toFixed(2)})`);
                     if (numberComp) output.push(`Number = ${numberComp.number}`);
                     if (dayComp) output.push(`Day = ${dayComp.day}`);
-                    if (timeComp && timeComp.currentTime) output.push(`Time = ${timeComp.currentTime.toLocaleTimeString()}`);
-                    if (timeFakeComp && timeFakeComp.currentTime) output.push(`Fake Time = ${timeFakeComp.currentTime.toLocaleTimeString()}`);
+                    if (timeComp && timeComp.currentTime) output.push(`Time = ${Math.floor(timeComp.currentTime.getTime() / 1000)}`);
+                    if (timeFakeComp && timeFakeComp.currentTime) output.push(`Fake Time = ${Math.floor(timeFakeComp.currentTime.getTime() / 1000)}`);
 
                     console.log(output.join(", "));
                 }
@@ -327,10 +336,10 @@
             text(`Number: ${numComp.number}`, 10, 10);
             text(`Day: ${dayComp.day}`, 10, 30);
             if (timeComp.currentTime) {
-                text(`Time: ${timeComp.currentTime.toLocaleTimeString()}`, 10, 50);
+                text(`Time: ${Math.floor(timeComp.currentTime.getTime() / 1000)}`, 10, 50);
             }
             if (timeFakeComp.currentTime) {
-                text(`Fake Time: ${timeFakeComp.currentTime.toLocaleTimeString()}`, 10, 70);
+                text(`Fake Time: ${Math.floor(timeFakeComp.currentTime.getTime() / 1000)}`, 10, 70);
             }
         }
     </script>
