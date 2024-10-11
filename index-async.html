@@ -274,6 +274,7 @@
         let world;
         let startTime;
         const simulationDuration = 10000; // 10 seconds
+        let lastUpdate = 0;
 
         function setup() {
             createCanvas(800, 600);
@@ -306,18 +307,22 @@
             world.addSystem(new LogSystem());
 
             startTime = millis();
+            setInterval(async () => {
+                const now = millis();
+                if (now - startTime > simulationDuration) {
+                    console.log("Simulation ended after 10 seconds");
+                    noLoop();
+                    return;
+                }
+
+                const dt = (now - lastUpdate) / 1000;
+                lastUpdate = now;
+                await world.update(dt);
+            }, 100); // Update every 100ms
         }
 
-        async function draw() {
-            if (millis() - startTime > simulationDuration) {
-                console.log("Simulation ended after 10 seconds");
-                noLoop();
-                return;
-            }
-
+        function draw() {
             background(0);
-            const dt = deltaTime / 1000;
-            await world.update(dt);
 
             // Render entities
             for (const entity of world.entities) {
