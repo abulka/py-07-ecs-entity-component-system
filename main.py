@@ -75,7 +75,11 @@ class VelocityComponent(Component):
 class TimeComponent(Component):
     def __init__(self):
         self.current_time: Optional[datetime] = None
-        self.last_update: float = 0
+
+class TimeFakeComponent(Component):
+    def __init__(self):
+        self.current_time: Optional[datetime] = None
+        self.last_update: Optional[datetime] = None
 
 class NumberCountingComponent(Component):
     def __init__(self, number: int):
@@ -103,23 +107,28 @@ class MovementSystem(System):
                 pos.x += vel.vx * dt.total_seconds()
                 pos.y += vel.vy * dt.total_seconds()
 
-# class TimePollingSystem(System):
-#     """Doesn't do a real internet call, just simulates a long-running task. Also does a sleep. Also only runs every 5 seconds."""
-#     is_long_running = True
+class TimeFakePollingSystem(System):
+    """Doesn't do a real internet call, just simulates a long-running task. 
+    Also does a sleep. 
+    Also only runs every 5 seconds."""
+    is_long_running = True
 
-#     async def update(self, world: World, dt: timedelta) -> None:
-#         current_time = time.time()
-#         for entity in world.entities:
-#             time_comp = entity.get_component(TimeComponent)
-            
-#             if isinstance(time_comp, TimeComponent) and current_time - time_comp.last_update >= 5:
-#                 await self.fetch_time(time_comp)
+    TIME_BETWEEN_UPDATES = 2 # seconds
+    TIME_SLEEP = 1 # seconds
 
-#     async def fetch_time(self, time_component: TimeComponent) -> None:
-#         # Simulate a long-running API call
-#         await asyncio.sleep(2)
-#         time_component.current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-#         time_component.last_update = time.time() # could convert the epoch time (float) to a datetime object date_time = datetime.fromtimestamp(epoch_time)
+    async def update(self, world: World, dt: timedelta) -> None:
+        current_time = datetime.now()
+        for entity in world.entities:
+            time_comp = entity.get_component(TimeComponent)
+            if isinstance(time_comp, TimeFakeComponent):
+                if time_comp.last_update is None or (current_time - time_comp.last_update).total_seconds() >= self.TIME_BETWEEN_UPDATES:
+                    await self.fetch_time(time_comp)
+
+    async def fetch_time(self, time_component: TimeFakeComponent) -> None:
+        # Simulate a long-running API call
+        await asyncio.sleep(self.TIME_SLEEP)
+        time_component.current_time = datetime.now()
+        time_component.last_update = datetime.now()
 
 class TimeInternetPollingSystem(System):
     """This implementation now takes advantage of Python's asynchronous
@@ -183,6 +192,7 @@ async def game_loop(world: World, duration: float):
         for entity in world.entities:
             pos = entity.get_component(PositionComponent)
             time_comp = entity.get_component(TimeComponent)
+            time_fake_comp = entity.get_component(TimeFakeComponent)
             number_comp = entity.get_component(NumberCountingComponent)
             day_comp = entity.get_component(DayCountingComponent)
 
@@ -199,6 +209,12 @@ async def game_loop(world: World, duration: float):
                 else:
                     formatted_time = "None (yet)"
                 output.append(f"Time = {formatted_time}")
+            if isinstance(time_fake_comp, TimeFakeComponent):
+                if time_fake_comp.current_time is not None:
+                    formatted_time = time_fake_comp.current_time.strftime("%Hh %Mm %Ss %fms")
+                else:
+                    formatted_time = "None (yet)"
+                output.append(f"Fake Time = {formatted_time}")
             print(", ".join(output))
         print("---")
 
@@ -224,11 +240,12 @@ async def main():
     entity3.add_component(NumberCountingComponent(0))
     entity3.add_component(DayCountingComponent("Monday"))
     entity3.add_component(TimeComponent())
+    entity3.add_component(TimeFakeComponent())
     world.add_entity(entity3)
 
     # Add systems
     world.add_system(MovementSystem())
-    # world.add_system(TimePollingSystem())
+    world.add_system(TimeFakePollingSystem())
     world.add_system(TimeInternetPollingSystem())
     world.add_system(CountingSystem())
 
