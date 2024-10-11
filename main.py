@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import time
 
 import aiohttp
+from blessed import Terminal
 
 class Component:
     pass
@@ -177,7 +178,73 @@ class CountingSystem(System):
             if isinstance(day_comp, DayCountingComponent):
                 day_comp.increment_day()
 
-async def game_loop(world: World, duration: float):
+class RendererSystem(System):
+    def __init__(self, term: Terminal):
+        self.term = term
+
+    async def update(self, world: World, dt: timedelta) -> None:
+        with self.term.location():
+            print(self.term.home + self.term.clear)
+            for entity in world.entities:
+                pos = entity.get_component(PositionComponent)
+                num_comp = entity.get_component(NumberCountingComponent)
+                day_comp = entity.get_component(DayCountingComponent)
+                time_comp = entity.get_component(TimeComponent)
+                time_fake_comp = entity.get_component(TimeFakeComponent)
+
+                if isinstance(pos, PositionComponent):
+                    print(self.term.move_xy(int(pos.x), int(pos.y)) + f"Entity {entity.id}")
+
+                if isinstance(num_comp, NumberCountingComponent):
+                    print(self.term.move_xy(0, 20) + f"Number: {num_comp.number}")
+
+                if isinstance(day_comp, DayCountingComponent):
+                    print(self.term.move_xy(0, 21) + f"Day: {day_comp.day}")
+
+                if isinstance(time_comp, TimeComponent):
+                    formatted_time = time_comp.current_time.strftime("%Ss") if time_comp.current_time else "None (yet)"
+                    print(self.term.move_xy(0, 22) + f"Internet Time: {formatted_time}")
+
+                if isinstance(time_fake_comp, TimeFakeComponent):
+                    formatted_time = time_fake_comp.current_time.strftime("%Ss") if time_fake_comp.current_time else "None (yet)"
+                    print(self.term.move_xy(0, 23) + f"Fake Time: {formatted_time}")
+
+class LogSystem(System):
+    def __init__(self, log_file: str = "main.log"):
+        self.log_file = log_file
+
+    async def update(self, world: World, dt: timedelta) -> None:
+        with open(self.log_file, 'a') as log:
+            for entity in world.entities:
+                pos = entity.get_component(PositionComponent)
+                time_comp = entity.get_component(TimeComponent)
+                time_fake_comp = entity.get_component(TimeFakeComponent)
+                number_comp = entity.get_component(NumberCountingComponent)
+                day_comp = entity.get_component(DayCountingComponent)
+
+                output = [f"Entity {entity.id}:"]
+                if isinstance(pos, PositionComponent):
+                    output.append(f"Position = ({pos.x:.2f}, {pos.y:.2f})")
+                if isinstance(number_comp, NumberCountingComponent):
+                    output.append(f"Number = {number_comp.number}")
+                if isinstance(day_comp, DayCountingComponent):
+                    output.append(f"Day = {day_comp.day}")
+                if isinstance(time_comp, TimeComponent):
+                    if time_comp.current_time is not None:
+                        formatted_time = time_comp.current_time.strftime("%Ss")
+                    else:
+                        formatted_time = "None (yet)"
+                    output.append(f"Time = {formatted_time}")
+                if isinstance(time_fake_comp, TimeFakeComponent):
+                    if time_fake_comp.current_time is not None:
+                        formatted_time = time_fake_comp.current_time.strftime("%Ss")
+                    else:
+                        formatted_time = "None (yet)"
+                    output.append(f"Fake Time = {formatted_time}")
+                log.write(", ".join(output) + "\n")
+            log.write("---\n")
+
+async def game_loop(world: World, duration: float, term: Terminal):
     start_time = time.time()
     last_time = start_time
     frame_count = 0
@@ -188,43 +255,12 @@ async def game_loop(world: World, duration: float):
         last_time = current_time
         frame_count += 1
 
-        # Print entity states
-        for entity in world.entities:
-            pos = entity.get_component(PositionComponent)
-            time_comp = entity.get_component(TimeComponent)
-            time_fake_comp = entity.get_component(TimeFakeComponent)
-            number_comp = entity.get_component(NumberCountingComponent)
-            day_comp = entity.get_component(DayCountingComponent)
-
-            output = [f"Entity {entity.id}:"]
-            if isinstance(pos, PositionComponent):
-                output.append(f"Position = ({pos.x:.2f}, {pos.y:.2f})")
-            if isinstance(number_comp, NumberCountingComponent):
-                output.append(f"Number = {number_comp.number}")
-            if isinstance(day_comp, DayCountingComponent):
-                output.append(f"Day = {day_comp.day}")
-            if isinstance(time_comp, TimeComponent):
-                if time_comp.current_time is not None:
-                    # formatted_time = time_comp.current_time.strftime("%Hh %Mm %Ss %fms")
-                    formatted_time = time_comp.current_time.strftime("%Ss")
-                else:
-                    formatted_time = "None (yet)"
-                output.append(f"Time = {formatted_time}")
-            if isinstance(time_fake_comp, TimeFakeComponent):
-                if time_fake_comp.current_time is not None:
-                    # formatted_time = time_fake_comp.current_time.strftime("%Hh %Mm %Ss %fms")
-                    formatted_time = time_fake_comp.current_time.strftime("%Ss")
-                else:
-                    formatted_time = "None (yet)"
-                output.append(f"Fake Time = {formatted_time}")
-            print(", ".join(output))
-        print("---")
-
-        await asyncio.sleep(0.5)  # Simulate frame rate
+        await asyncio.sleep(0.15)  # Simulate frame rate
 
     print(f"Simulation completed. Average FPS: {frame_count / duration:.2f}")
 
 async def main():
+    term = Terminal()
     world = World()
 
     # Create entities
@@ -250,9 +286,12 @@ async def main():
     world.add_system(TimeFakePollingSystem())
     world.add_system(TimeInternetPollingSystem())
     world.add_system(CountingSystem())
+    world.add_system(RendererSystem(term))
+    world.add_system(LogSystem())
 
     print("Starting game loop...")
-    await game_loop(world, duration=5)
+    with term.fullscreen(), term.cbreak(), term.hidden_cursor():
+        await game_loop(world, duration=15, term=term)
 
 if __name__ == "__main__":
     asyncio.run(main())
