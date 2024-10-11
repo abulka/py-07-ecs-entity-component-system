@@ -1,9 +1,8 @@
 import asyncio
+from typing import Type, Dict, List, Optional, Coroutine
+from datetime import timedelta, datetime
 import aiohttp
-from typing import Type, Dict, List, Optional
-from datetime import timedelta
-
-# ECS Framework
+import time
 
 class Component:
     pass
@@ -18,7 +17,6 @@ class Entity:
 
     def add_component(self, component: Component) -> None:
         self.components[type(component)] = component
-        print(f"Added component {type(component).__name__} to entity {self.id}")
 
     def get_component(self, component_type: Type[Component]) -> Optional[Component]:
         return self.components.get(component_type)
@@ -31,6 +29,7 @@ class World:
     def __init__(self) -> None:
         self.entities: List[Entity] = []
         self.systems: List[System] = []
+        self.long_running_tasks: Dict[int, asyncio.Task] = {}
 
     def add_entity(self, entity: Entity) -> None:
         self.entities.append(entity)
@@ -38,69 +37,111 @@ class World:
     def add_system(self, system: System) -> None:
         self.systems.append(system)
 
+    def add_long_running_task(self, entity_id: int, coro: Coroutine) -> None:
+        if entity_id not in self.long_running_tasks or self.long_running_tasks[entity_id].done():
+            self.long_running_tasks[entity_id] = asyncio.create_task(coro)
+
     async def update(self, dt: timedelta) -> None:
-        print(f"Updating world by {dt.total_seconds()} seconds")
         await asyncio.gather(*[system.update(self, dt) for system in self.systems])
 
-# Components
+        completed_tasks = [entity_id for entity_id, task in self.long_running_tasks.items() if task.done()]
+        for entity_id in completed_tasks:
+            task = self.long_running_tasks.pop(entity_id)
+            try:
+                await task
+            except Exception as e:
+                print(f"Long-running task for entity {entity_id} failed: {e}")
+
 class NumberComponent(Component):
-    def __init__(self, number: int) -> None:
-        self.number: int = number
+    def __init__(self, number: int):
+        self.number = number
 
 class DayComponent(Component):
-    def __init__(self, day: str) -> None:
-        self.day: str = day
-        self.days_of_week: List[str] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    def __init__(self, day: str):
+        self.day = day
+        self.days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-    def increment_day(self) -> None:
+    def increment_day(self):
         current_index = self.days_of_week.index(self.day)
         self.day = self.days_of_week[(current_index + 1) % 7]
 
 class TimePollingComponent(Component):
-    def __init__(self) -> None:
+    def __init__(self):
         self.current_time: Optional[str] = None
+        self.last_update: float = 0
 
-# Systems
-class IncrementNumberSystem(System):
+class MovementSystem(System):
     async def update(self, world: World, dt: timedelta) -> None:
         for entity in world.entities:
-            component = entity.get_component(NumberComponent)
-            if isinstance(component, NumberComponent):
-                component.number += 1
+            number_comp = entity.get_component(NumberComponent)
+            if isinstance(number_comp, NumberComponent):
+                number_comp.number += 1
 
-class IncrementDaySystem(System):
-    def __init__(self) -> None:
-        self.accumulated_time = timedelta(0)
-
+class DayIncrementSystem(System):
     async def update(self, world: World, dt: timedelta) -> None:
-        self.accumulated_time += dt
-        if self.accumulated_time >= timedelta(seconds=2):
-            for entity in world.entities:
-                component = entity.get_component(DayComponent)
-                if isinstance(component, DayComponent):
-                    component.increment_day()
-            self.accumulated_time -= timedelta(seconds=2)
+        for entity in world.entities:
+            day_comp = entity.get_component(DayComponent)
+            if isinstance(day_comp, DayComponent):
+                day_comp.increment_day()
 
 class TimePollingSystem(System):
-    """This implementation now takes advantage of Python's asynchronous
-    capabilities, allowing for non-blocking I/O operations when fetching the
-    current time from the API. The TimePollingSystem runs concurrently with
-    other systems, demonstrating the power of async programming in this ECS
-    framework."""
     async def update(self, world: World, dt: timedelta) -> None:
-        async with aiohttp.ClientSession() as session:
-            for entity in world.entities:
-                component = entity.get_component(TimePollingComponent)
-                if isinstance(component, TimePollingComponent):
-                    try:
-                        async with session.get("http://worldtimeapi.org/api/timezone/Australia/Melbourne") as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                component.current_time = data.get('datetime')
-                    except aiohttp.ClientError as e:
-                        print(f"Error polling time: {e}")
+        current_time = time.time()
+        for entity in world.entities:
+            time_component = entity.get_component(TimePollingComponent)
+            if isinstance(time_component, TimePollingComponent):
+                if current_time - time_component.last_update >= 5:
+                    world.add_long_running_task(entity.id, self.fetch_time(time_component))
 
-# Example Program
+    async def fetch_time(self, time_component: TimePollingComponent) -> None:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://worldtimeapi.org/api/timezone/Australia/Melbourne") as response:
+                    await asyncio.sleep(1)  # Artificially delay the HTTP call by 1 second
+                    if response.status == 200:
+                        data = await response.json()
+                        time_component.current_time = data.get('datetime')
+                        time_component.last_update = time.time()
+                    else:
+                        print(f"Failed to fetch time. Status code: {response.status}")
+        except Exception as e:
+            print(f"Failed to fetch time: {e}")
+
+async def game_loop(world: World, duration: float):
+    start_time = time.time()
+    last_time = start_time
+    frame_count = 0
+    while time.time() - start_time < duration:
+        print(f"Frame {frame_count}, Time Left: {duration - (time.time() - start_time):.2f}")
+        current_time = time.time()
+        dt = timedelta(seconds=current_time - last_time)
+        await world.update(dt)
+        last_time = current_time
+        frame_count += 1
+
+        # Print essential output
+        for entity in world.entities:
+            number_comp = entity.get_component(NumberComponent)
+            day_comp = entity.get_component(DayComponent)
+            time_comp = entity.get_component(TimePollingComponent)
+            
+            output = f"Entity {entity.id}: "
+            if isinstance(number_comp, NumberComponent):
+                output += f"Number = {number_comp.number}, "
+            if isinstance(day_comp, DayComponent):
+                output += f"Day = {day_comp.day}, "
+            if isinstance(time_comp, TimePollingComponent):
+                output += f"Time = {time_comp.current_time}"
+            
+            print(output.rstrip(', '))
+        
+        print("---")
+
+        await asyncio.sleep(0.01)  # Introduce a small delay to simulate a realistic frame rate
+
+    elapsed_time = time.time() - start_time
+    print(f"Simulation completed. Average FPS: {frame_count / elapsed_time:.2f}")
+
 async def main():
     world = World()
 
@@ -109,38 +150,20 @@ async def main():
     entity1.add_component(NumberComponent(0))
     entity1.add_component(DayComponent("Monday"))
     entity1.add_component(TimePollingComponent())
+    world.add_entity(entity1)
 
     entity2 = Entity()
     entity2.add_component(NumberComponent(10))
     entity2.add_component(DayComponent("Wednesday"))
-
-    # Add entities to the world
-    world.add_entity(entity1)
     world.add_entity(entity2)
 
-    # Add systems to the world
-    world.add_system(IncrementNumberSystem())
-    world.add_system(IncrementDaySystem())
+    # Add systems
+    world.add_system(MovementSystem())
+    world.add_system(DayIncrementSystem())
     world.add_system(TimePollingSystem())
 
-    # Run the systems a few times
-    for _ in range(5):
-        await world.update(timedelta(seconds=1))
-        
-        number_component1 = entity1.get_component(NumberComponent)
-        day_component1 = entity1.get_component(DayComponent)
-        time_component1 = entity1.get_component(TimePollingComponent)
-        number_component2 = entity2.get_component(NumberComponent)
-        day_component2 = entity2.get_component(DayComponent)
-        
-        if isinstance(number_component1, NumberComponent) and isinstance(day_component1, DayComponent) and isinstance(time_component1, TimePollingComponent):
-            print(f"Entity 1: Number = {number_component1.number}, Day = {day_component1.day}, Time = {time_component1.current_time}")
-        
-        if isinstance(number_component2, NumberComponent) and isinstance(day_component2, DayComponent):
-            print(f"Entity 2: Number = {number_component2.number}, Day = {day_component2.day}")
-        
-        print("---")
-        # await asyncio.sleep(1)  # Add a delay to avoid hammering the API
+    print("Starting game loop...")
+    await game_loop(world, duration=1)  # Run for 1 second
 
 if __name__ == "__main__":
     asyncio.run(main())
