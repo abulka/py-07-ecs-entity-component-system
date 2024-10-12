@@ -17,6 +17,8 @@ Is asynchronous and also allows for long running tasks.
 
 And now also a Javascript implementation. See index.html
 
+See also ECS resources: https://github.com/jslee02/awesome-entity-component-system?tab=readme-ov-file
+
 ## Running the code
 
 To run the code, you need to have Python 3 installed. You can run the code by executing the following command:
@@ -25,13 +27,15 @@ To run the code, you need to have Python 3 installed. You can run the code by ex
 uv run main.py
 ```
 
-## Running the Javascript code
+### Running the Javascript code
 
-Open index.html or index-async.html in a browser. Or run a web server in the directory e.g. `python3 -m http.server`
+Open `index.html` or `index-async.html` in a browser. 
+
+Or run a web server in the directory e.g. `python3 -m http.server`
 
 # Architecture
 
-You're right, and I apologize for not addressing the broader architectural issue in my previous response. Let's design a more general solution that accommodates both fast and long-running systems within the ECS architecture.
+A general solution that accommodates both fast and long-running systems within the ECS architecture.
 
 This updated ECS architecture addresses the issue of mixing fast and long-running systems. Here are the key changes and features:
 
